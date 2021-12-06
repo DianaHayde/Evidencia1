@@ -1,0 +1,91 @@
+-- Evidencia 1. Descripción y diseño de un circuito basado en una unidad de control en VHDL utilizando señales de control explícitas e implícitas
+-- Luis Alberto Carranza González 		A01657296
+-- Karen Kimberly Chavarría Rosario 	A01652446
+-- Diana Hayde Chávez García 				A01653000
+
+-- Librerías
+library IEEE;
+	use IEEE.STD_LOGIC_1164.all;
+    use ieee.numeric_std.all;
+
+entity evidencia1 is
+    port (Clk, Reset, STARTBIT_DETECT: in STD_LOGIC;
+          count_o : out std_logic_vector(7 downto 0));
+end evidencia1;
+
+architecture RX of Evidencia1 is
+
+type State is (RX_IDLE, RX_START, RX_DATA, RX_PARITY, RX_STOP);	-- Declaración de tipo de dato State 
+signal CurrentState, NextState: State;	-- Señales de tipo State
+signal STATE_CNT : integer range 0 to 16;
+signal RX_BITCNT : integer range 0 to 7;
+begin
+	Registers: process (Clk, Reset)
+	begin
+        if Reset = '1' then				-- Reset asincrónico
+			CurrentState <= RX_IDLE;
+        elsif Clk'event and Clk='1' then		-- Sincronización de estados
+            CurrentState <= NextState;
+            -- Asignación de estado siguiente en transición positiva de reloj
+        end if;
+end process Registers;
+
+	Combinational: process (CurrentState, STARTBIT_DETECT) -- Lógica combinacional de la RX
+	begin
+		NextState <= CurrentState;
+        
+		case CurrentState is
+		when RX_IDLE =>						-- Estado RX_IDLE
+			if STARTBIT_DETECT ='0' then
+				NextState <= RX_START ;		-- si STARTBIT_DETECT= 1, siguiente estado 
+            elsif STARTBIT_DETECT ='1' then
+            	NextState <= RX_IDLE;		-- si STARTBIT_DETECT = 0, siguiente estado 
+			end if;	
+		when RX_START =>					-- Estado RX_START
+              STATE_CNT <= 0;
+            	if STATE_CNT = 15 then
+                  STATE_CNT <= 0;
+                  NextState <= RX_DATA;
+            	else    
+                	STATE_CNT <= STATE_CNT + 1;   
+        	end if;	-- si STATE_CNT = 16, siguiente E (16 CICLOS DE RELOJ)
+            
+		when RX_DATA =>						-- Estado RX_DATA
+			STATE_CNT <= 0;
+         RX_BITCNT <= 0;
+				if(STATE_CNT = 16) then
+                  STATE_CNT <= 0;
+							if( RX_BITCNT = 8) then
+								RX_BITCNT <= 0;
+								NextState <= RX_PARITY;    -- si STATE_CNT = 16, siguiente E (16 CICLOS DE RELOJ)
+							else 
+								NextState <= RX_DATA; 
+								RX_BITCNT <= RX_BITCNT + 1; --menor a 8 
+							end if;
+				else
+					STATE_CNT <= STATE_CNT + 1;	
+				end if;				
+        count_o <= std_logic_vector(to_unsigned(RX_BITCNT, 8));
+		when RX_PARITY =>					-- Estado RX_PARITY
+			 STATE_CNT <= 0;
+            	if(STATE_CNT = 16) then
+                  STATE_CNT <= 0;
+                  NextState <= RX_STOP;
+            	else    
+                	STATE_CNT <= STATE_CNT + 1;
+            	end if;    
+		when RX_STOP =>						-- Cualquier otro caso para CurrentState
+            	if(STATE_CNT = 16) then
+                  STATE_CNT <= 0;
+                  if STARTBIT_DETECT ='1' then
+					NextState <= RX_IDLE;	
+                   elsif STARTBIT_DETECT ='0' then
+            		NextState <= RX_START;	
+              	else    
+                      STATE_CNT <= STATE_CNT + 1;
+                  end if;  
+                 end if; 
+   
+		end case;
+	end process Combinational;
+end architecture RX;
